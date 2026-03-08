@@ -78,6 +78,7 @@ def _load_json(filename: str) -> dict:
     path = DATA_DIR / filename
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
+    logger.error("Data file not found: %s (DATA_DIR=%s)", filename, DATA_DIR)
     return {}
 
 
@@ -145,23 +146,27 @@ def _get_partner_shishen(
         entry = mapping.get(sub_type)
         if entry:
             return entry.get("partner_shishen")
+        return "印星"  # fallback for unmapped成格
 
-    elif status == "败格有救" and rescue:
-        result = _extract_shishen(rescue, _RESCUE_TO_PARTNER)
-        if result:
-            return result
+    if status == "败格有救":
+        if rescue:
+            result = _extract_shishen(rescue, _RESCUE_TO_PARTNER)
+            if result:
+                return result
+        # H4 fix: use generic败格有救 mapping, NOT成格 mapping
+        generic = _load_mapping().get("_generic_败格有救", {})
+        return generic.get("partner_shishen") or "印星"
 
-    elif status == "败格无救" and defeat_god:
-        result = _extract_shishen(defeat_god, _DEFEAT_GOD_COUNTER)
-        if result:
-            return result
+    if status == "败格无救":
+        if defeat_god:
+            result = _extract_shishen(defeat_god, _DEFEAT_GOD_COUNTER)
+            if result:
+                return result
+        # H4 fix: use generic败格无救 mapping, NOT成格 mapping
+        generic = _load_mapping().get("_generic_败格无救", {})
+        return generic.get("partner_shishen") or "印星"
 
-    # Fallback: use成格 mapping
-    mapping = _load_mapping()
-    entry = mapping.get(sub_type)
-    if entry:
-        return entry.get("partner_shishen")
-    return "印星"
+    return "印星"  # ultimate fallback
 
 
 def get_l3_probability(sub_type: str, status: str) -> float | None:

@@ -11,6 +11,7 @@ MCP Bazi Partner Server
 import sys
 import json
 import logging
+import calendar
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
@@ -23,6 +24,14 @@ except ImportError:
     sys.exit(1)
 
 mcp = FastMCP("bazi-partner")
+
+# Valid constants for input validation
+_VALID_TIANGAN = {"甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"}
+_VALID_STATUS = {"成格", "败格有救", "败格无救"}
+
+# Markers for safe SOUL.md append/replace
+_MARKER_START = "\n\n<!-- bazi-partner:start -->\n"
+_MARKER_END = "\n<!-- bazi-partner:end -->\n"
 
 
 @mcp.tool()
@@ -64,15 +73,25 @@ def bazi_analyze(year: int, month: int, day: int, hour: int = -1) -> str:
         day: Birth day 1-31
         hour: Birth hour 0-23. MUST ask user for this. Use -1 only if user truly doesn't know.
     """
+    # C2 fix: validate date
+    if month < 1 or month > 12:
+        return json.dumps({"error": f"月份 {month} 无效，应为 1-12"}, ensure_ascii=False)
+    try:
+        max_day = calendar.monthrange(year, month)[1]
+    except ValueError:
+        return json.dumps({"error": f"日期无效: {year}-{month}-{day}"}, ensure_ascii=False)
+    if day < 1 or day > max_day:
+        return json.dumps({"error": f"{year}年{month}月没有第{day}天（最多{max_day}天）"}, ensure_ascii=False)
+
+    if hour < 0 or hour > 23:
+        hour = 12  # fallback to noon
+
     import dataclasses
     from .engine.paipan import calculate_sizhu
     from .engine.shishen import calculate_shishen
     from .engine.wuxing import calculate_wuxing
     from .engine.geju import determine_pattern_by_rules
     from .engine.constants import hour_to_shichen_name
-
-    if hour < 0 or hour > 23:
-        hour = 12  # fallback to noon
 
     sizhu, bazi_obj = calculate_sizhu(year, month, day, hour)
     shishen = calculate_shishen(bazi_obj, sizhu)
@@ -118,17 +137,24 @@ def bazi_partner(
     Takes the pattern determination result and returns the matching partner type,
     intro text, and system prompt to inject into a custom AI assistant.
 
-    After getting the result, you SHOULD automatically call bazi_apply_prompt
-    to write the partner's system_prompt into the user's SOUL.md file,
-    so the AI assistant adopts the partner personality.
+    After getting the result, you MUST ask the user for confirmation before
+    calling bazi_apply_prompt to write the partner personality into SOUL.md.
 
     Args:
         sub_type: Pattern sub-type name (e.g. "煞印相生", "正官格", "食神生财")
         status: Pattern status - one of "成格", "败格有救", "败格无救"
         day_master: Day master heavenly stem (e.g. "甲", "庚", "壬")
-        rescue: Rescue god description (for 败格有救 status)
-        defeat_god: Defeat god description (for 败格无救 status)
+        rescue: Rescue god description (required for 败格有救 status)
+        defeat_god: Defeat god description (required for 败格无救 status)
     """
+    # H2 fix: validate day_master
+    if day_master not in _VALID_TIANGAN:
+        return json.dumps({"error": f"无效日主: '{day_master}'，应为十天干之一: {sorted(_VALID_TIANGAN)}"}, ensure_ascii=False)
+
+    # H3 fix: validate status
+    if status not in _VALID_STATUS:
+        return json.dumps({"error": f"无效状态: '{status}'，应为: {sorted(_VALID_STATUS)}"}, ensure_ascii=False)
+
     from .engine.partner import get_partner
 
     result = get_partner(
@@ -139,18 +165,24 @@ def bazi_partner(
         defeat_god=defeat_god or None,
     )
 
-    if result:
-        result["_next_step"] = "Show the partner result to the user, then ASK for confirmation before calling bazi_apply_prompt to write SOUL.md"
-        return json.dumps(result, ensure_ascii=False, indent=2)
-    return json.dumps({"error": "No partner match found"}, ensure_ascii=False)
+    # H1 fix: check for missing prompt
+    if not result or not result.get("system_prompt"):
+        return json.dumps({
+            "error": f"未找到 sub_type='{sub_type}' status='{status}' 的搭档数据。请检查子格局名是否正确。",
+            "hint": "sub_type 应为 L2 子格局名（如'煞印相生'），不是 L1 大格局名（如'七杀格'）。",
+        }, ensure_ascii=False)
+
+    result["_next_step"] = "Show the partner result to the user, then ASK for confirmation before calling bazi_apply_prompt to write SOUL.md"
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
 def bazi_apply_prompt(system_prompt: str, partner_type: str = "") -> str:
-    """Write the matched partner's system prompt into the user's SOUL.md file.
+    """Append the matched partner's system prompt into the user's SOUL.md file.
 
     This makes the OpenClaw agent adopt the BaZi partner personality.
-    The prompt is written to ~/.openclaw/SOUL.md (the standard OpenClaw persona file).
+    The prompt is APPENDED (not overwritten) to ~/.openclaw/SOUL.md using
+    markers to safely replace any previous bazi-partner section.
 
     IMPORTANT: You MUST ask the user for confirmation before calling this tool.
     Show them the partner type and ask "是否将搭档人格写入 SOUL.md？" first.
@@ -160,7 +192,6 @@ def bazi_apply_prompt(system_prompt: str, partner_type: str = "") -> str:
         system_prompt: The partner system prompt from bazi_partner result
         partner_type: The partner type name for the header (e.g. "水系 · 铁壁回声")
     """
-    # Try multiple possible SOUL.md locations
     home = Path.home()
     candidates = [
         home / ".openclaw" / "SOUL.md",
@@ -174,20 +205,31 @@ def bazi_apply_prompt(system_prompt: str, partner_type: str = "") -> str:
             target = path
             break
     if target is None:
-        # Default to ~/.openclaw/SOUL.md, create dir if needed
         target = candidates[0]
         target.parent.mkdir(parents=True, exist_ok=True)
 
-    header = f"# 八字搭档人格 — {partner_type}\n\n" if partner_type else ""
-    content = header + system_prompt + "\n"
+    # C1 fix: read existing content, replace only bazi-partner section
+    existing = target.read_text(encoding="utf-8") if target.exists() else ""
 
-    target.write_text(content, encoding="utf-8")
-    logger.info("Wrote partner prompt to %s", target)
+    # Remove old bazi-partner section if present
+    if _MARKER_START in existing:
+        before = existing[:existing.index(_MARKER_START)]
+        end_idx = existing.index(_MARKER_END) + len(_MARKER_END)
+        after = existing[end_idx:]
+        existing = before + after
+
+    # Build new section
+    header = f"# 八字搭档人格 — {partner_type}\n\n" if partner_type else ""
+    new_section = _MARKER_START + header + system_prompt + _MARKER_END
+
+    # Append to existing content
+    target.write_text(existing + new_section, encoding="utf-8")
+    logger.info("Appended partner prompt to %s", target)
 
     return json.dumps({
         "success": True,
         "path": str(target),
-        "message": f"搭档人格已写入 {target}，重启对话后生效。",
+        "message": f"搭档人格已追加到 {target}（原有内容保留），重启对话后生效。",
     }, ensure_ascii=False)
 
 
