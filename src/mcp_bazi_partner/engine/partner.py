@@ -55,6 +55,18 @@ _STATUS_RATIO = {"成格": 0.35, "败格有救": 0.40, "败格无救": 0.25}
 # Wuxing element → system name
 _WUXING_SYS = {"木": "木系", "火": "火系", "土": "土系", "金": "金系", "水": "水系"}
 
+# L1 → most common L2 fallback (used when agent passes L1 pattern name)
+_L1_TO_L2_FALLBACK = {
+    "七杀格": "煞印相生",
+    "伤官格": "伤官生财",
+    "印格": "印绶用官",
+    "食神格": "食神生财",
+    "财格": "财旺生官",
+    "正官格": "正官格",
+    "建禄月劫格": "禄劫用财",
+    "阳刃格": "阳刃用煞",
+}
+
 # Cached data
 _mapping: dict | None = None
 _intros: dict | None = None
@@ -167,6 +179,13 @@ def get_partner(
     rescue: str | None = None, defeat_god: str | None = None,
 ) -> dict | None:
     """Match partner based on pattern determination result."""
+    # L1→L2 fallback: if sub_type is a broad L1 name, map to most common L2
+    mapping = _load_mapping()
+    if sub_type not in mapping and sub_type in _L1_TO_L2_FALLBACK:
+        original = sub_type
+        sub_type = _L1_TO_L2_FALLBACK[sub_type]
+        logger.warning("L1→L2 fallback: %s → %s", original, sub_type)
+
     partner_shishen = _get_partner_shishen(sub_type, status, rescue, defeat_god)
     if not partner_shishen:
         return None

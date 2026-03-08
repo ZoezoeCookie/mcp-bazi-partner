@@ -37,8 +37,26 @@ def bazi_analyze(year: int, month: int, day: int, hour: int = -1) -> str:
     If the user truly does not know, pass hour=-1 to use noon as fallback,
     but warn them the result may be inaccurate.
 
-    After getting the result, you SHOULD automatically call bazi_partner
-    with the pattern info to complete the partner matching.
+    After getting the result, you MUST determine the specific sub-type (L2) before
+    calling bazi_partner. The pattern.final_pattern is only the broad category (L1).
+    Analyze the four pillars (透干、藏干、十神配合) to determine the exact sub-type.
+
+    L1 → L2 mapping:
+    - 七杀格 → 煞印相生 / 煞邀食制 / 以劫合煞
+    - 伤官格 → 伤官佩印 / 伤官生财 / 伤官驾煞
+    - 印格 → 印绶用官 / 印绶喜食 / 印绶喜比 / 印赖煞生 / 印带财煞 / 印带煞兼食伤 / 印多用财
+    - 食神格 → 食神生财 / 食神制煞 / 食神吐秀 / 食神带煞印 / 食神合煞存财 / 弃食就煞印
+    - 财格 → 财旺生官 / 财格佩印 / 财用伤官 / 财喜食生 / 财用煞印 / 财用食印 / 财带七煞 / 弃财就煞 / 用财喜比
+    - 正官格 → 正官格
+    - 建禄月劫格 → 禄劫用财 / 禄劫用官 / 禄劫用煞 / 禄劫用伤食
+    - 阳刃格 → 阳刃用煞 / 阳刃用官 / 阳刃用财
+
+    Key reasoning rules:
+    - If 七杀 is present and 印星 transparently supports day master → 煞印相生
+    - If 七杀 is present and 食神 controls it → 煞邀食制
+    - If 伤官 and 印星 coexist → 伤官佩印
+    - If 伤官 generates 财星 → 伤官生财
+    - Look at which gods are transparent (透干) in year/month/time stems
 
     Args:
         year: Birth year (e.g. 1990)
@@ -82,7 +100,7 @@ def bazi_analyze(year: int, month: int, day: int, hour: int = -1) -> str:
         },
         "wuxing": dataclasses.asdict(wuxing),
         "shishen_summary": shishen.all_shishen,
-        "_next_step": "Call bazi_partner with sub_type=pattern.final_pattern, status='成格', day_master from result above",
+        "_next_step": "IMPORTANT: pattern.final_pattern is L1 (broad). You must analyze the pillars to determine the specific L2 sub-type (see L1→L2 mapping in tool description), then call bazi_partner with that L2 sub_type.",
     }
     return json.dumps(result, ensure_ascii=False, indent=2)
 
