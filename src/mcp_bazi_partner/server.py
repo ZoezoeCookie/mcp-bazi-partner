@@ -2,15 +2,16 @@
 MCP Bazi Partner Server
 
 八字搭档匹配服务，供 OpenClaw / Claude Code 等 MCP 客户端调用。
-提供 2 个工具：bazi_analyze（排盘+格局分析）和 bazi_partner（搭档匹配）。
+提供 3 个工具：bazi_analyze（排盘）、bazi_partner（搭档匹配）、bazi_apply_prompt（写入搭档人格）。
 
 安装: pip install mcp-bazi-partner
-运行: mcp-bazi-partner
+运行: mcp-bazi-partner 或 python -m mcp_bazi_partner
 """
 
 import sys
 import json
 import logging
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr)
 logger = logging.getLogger("bazi-partner")
@@ -25,17 +26,25 @@ mcp = FastMCP("bazi-partner")
 
 
 @mcp.tool()
-def bazi_analyze(year: int, month: int, day: int, hour: int) -> str:
+def bazi_analyze(year: int, month: int, day: int, hour: int = -1) -> str:
     """Analyze a birth date using Chinese BaZi (Four Pillars of Destiny).
 
-    Returns the four pillars (sizhu), ten gods (shishen), five elements (wuxing),
-    and pattern determination (geju) results. Pure algorithmic computation, no AI.
+    Returns the four pillars, ten gods, five elements, and pattern determination.
+    Pure algorithmic computation, no AI involved.
+
+    IMPORTANT: You MUST ask the user for their birth HOUR (时辰).
+    The hour determines the time pillar and significantly affects the result.
+    If the user truly does not know, pass hour=-1 to use noon as fallback,
+    but warn them the result may be inaccurate.
+
+    After getting the result, you SHOULD automatically call bazi_partner
+    with the pattern info to complete the partner matching.
 
     Args:
         year: Birth year (e.g. 1990)
         month: Birth month 1-12
         day: Birth day 1-31
-        hour: Birth hour 0-23
+        hour: Birth hour 0-23. MUST ask user for this. Use -1 only if user truly doesn't know.
     """
     import dataclasses
     from .engine.paipan import calculate_sizhu
@@ -43,6 +52,9 @@ def bazi_analyze(year: int, month: int, day: int, hour: int) -> str:
     from .engine.wuxing import calculate_wuxing
     from .engine.geju import determine_pattern_by_rules
     from .engine.constants import hour_to_shichen_name
+
+    if hour < 0 or hour > 23:
+        hour = 12  # fallback to noon
 
     sizhu, bazi_obj = calculate_sizhu(year, month, day, hour)
     shishen = calculate_shishen(bazi_obj, sizhu)
@@ -70,6 +82,7 @@ def bazi_analyze(year: int, month: int, day: int, hour: int) -> str:
         },
         "wuxing": dataclasses.asdict(wuxing),
         "shishen_summary": shishen.all_shishen,
+        "_next_step": "Call bazi_partner with sub_type=pattern.final_pattern, status='成格', day_master from result above",
     }
     return json.dumps(result, ensure_ascii=False, indent=2)
 
@@ -86,6 +99,10 @@ def bazi_partner(
 
     Takes the pattern determination result and returns the matching partner type,
     intro text, and system prompt to inject into a custom AI assistant.
+
+    After getting the result, you SHOULD automatically call bazi_apply_prompt
+    to write the partner's system_prompt into the user's SOUL.md file,
+    so the AI assistant adopts the partner personality.
 
     Args:
         sub_type: Pattern sub-type name (e.g. "煞印相生", "正官格", "食神生财")
@@ -105,8 +122,55 @@ def bazi_partner(
     )
 
     if result:
+        result["_next_step"] = "Show the partner result to the user, then ASK for confirmation before calling bazi_apply_prompt to write SOUL.md"
         return json.dumps(result, ensure_ascii=False, indent=2)
     return json.dumps({"error": "No partner match found"}, ensure_ascii=False)
+
+
+@mcp.tool()
+def bazi_apply_prompt(system_prompt: str, partner_type: str = "") -> str:
+    """Write the matched partner's system prompt into the user's SOUL.md file.
+
+    This makes the OpenClaw agent adopt the BaZi partner personality.
+    The prompt is written to ~/.openclaw/SOUL.md (the standard OpenClaw persona file).
+
+    IMPORTANT: You MUST ask the user for confirmation before calling this tool.
+    Show them the partner type and ask "是否将搭档人格写入 SOUL.md？" first.
+    Only proceed if the user confirms.
+
+    Args:
+        system_prompt: The partner system prompt from bazi_partner result
+        partner_type: The partner type name for the header (e.g. "水系 · 铁壁回声")
+    """
+    # Try multiple possible SOUL.md locations
+    home = Path.home()
+    candidates = [
+        home / ".openclaw" / "SOUL.md",
+        home / ".openclaw" / "workspace" / "SOUL.md",
+    ]
+
+    # Find existing SOUL.md or use default location
+    target = None
+    for path in candidates:
+        if path.exists():
+            target = path
+            break
+    if target is None:
+        # Default to ~/.openclaw/SOUL.md, create dir if needed
+        target = candidates[0]
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+    header = f"# 八字搭档人格 — {partner_type}\n\n" if partner_type else ""
+    content = header + system_prompt + "\n"
+
+    target.write_text(content, encoding="utf-8")
+    logger.info("Wrote partner prompt to %s", target)
+
+    return json.dumps({
+        "success": True,
+        "path": str(target),
+        "message": f"搭档人格已写入 {target}，重启对话后生效。",
+    }, ensure_ascii=False)
 
 
 def main():
