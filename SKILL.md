@@ -1,6 +1,5 @@
 ---
 name: mcp-bazi-partner
-version: 1.0.0
 description: >
   Chinese BaZi (Four Pillars of Destiny) analysis and AI partner matching.
   Trigger when user asks about 八字, 命理, 四柱, birth chart analysis,
@@ -101,12 +100,12 @@ L1→L2 对照表：
 
 ## 示例
 
-用户："我生日1991年10月19日凌晨0点30分，给我匹配合伙人"
+用户："我1997年5月18日上午9点出生，帮我匹配搭档"
 
-→ Step 1: `bazi_analyze(1991, 10, 19, 0)` → 壬水日主，七杀格（煞印相生）
-→ Step 2: `bazi_partner("煞印相生", "成格", "壬")` → 水系 · 铁壁回声
+→ Step 1: `bazi_analyze(1997, 5, 18, 9)` → 庚金日主，七杀格（偏印透干，煞印相生）
+→ Step 2: `bazi_partner("煞印相生", "成格", "庚")` → 金系 · 铁壁回声
 → 展示结果，问用户："是否将搭档人格写入 SOUL.md？"
-→ 用户确认 → Step 3: `bazi_apply_prompt(system_prompt, "水系 · 铁壁回声")` → 写入
+→ 用户确认 → Step 3: `bazi_apply_prompt(system_prompt, "金系 · 铁壁回声")` → 写入
 → 告知用户：搭档匹配完成，重启对话生效
 
 ## 命理方法
