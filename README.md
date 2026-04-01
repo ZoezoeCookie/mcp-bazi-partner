@@ -8,6 +8,12 @@ MCP server for Chinese BaZi (Four Pillars of Destiny) analysis and AI partner ma
 pip install mcp-bazi-partner
 ```
 
+Or install from source:
+
+```bash
+pip install git+https://github.com/ZoezoeCookie/mcp-bazi-partner.git
+```
+
 ## Usage
 
 ### As MCP server (for OpenClaw / Claude Code)

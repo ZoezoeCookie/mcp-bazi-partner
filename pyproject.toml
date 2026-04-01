@@ -9,10 +9,29 @@ description = "MCP server for Chinese BaZi (Four Pillars of Destiny) partner mat
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "ZoezoeCookie" },
+]
+keywords = ["mcp", "bazi", "four-pillars", "astrology", "partner-matching"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = [
     "mcp[cli]>=1.0.0",
     "lunar-python>=1.3.5",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ZoezoeCookie/mcp-bazi-partner"
+Repository = "https://github.com/ZoezoeCookie/mcp-bazi-partner"
+Issues = "https://github.com/ZoezoeCookie/mcp-bazi-partner/issues"
 
 [project.scripts]
 mcp-bazi-partner = "mcp_bazi_partner.server:main"

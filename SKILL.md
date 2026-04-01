@@ -1,5 +1,6 @@
 ---
 name: mcp-bazi-partner
+version: 1.0.0
 description: >
   Chinese BaZi (Four Pillars of Destiny) analysis and AI partner matching.
   Trigger when user asks about 八字, 命理, 四柱, birth chart analysis,
@@ -7,6 +8,7 @@ description: >
 metadata:
   openclaw:
     emoji: 🎴
+    homepage: https://github.com/ZoezoeCookie/mcp-bazi-partner
     requires:
       bins:
         - python3
